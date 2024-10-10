@@ -326,8 +326,6 @@ func (sd *SegmentationDescriptor) SegmentationUpidLength() int {
 
 // decode updates this splice_descriptor from binary.
 func (sd *SegmentationDescriptor) decode(b []byte) error {
-	var err error
-
 	r := iobit.NewReader(b)
 	r.Skip(8)  // splice_descriptor_tag
 	r.Skip(8)  // descriptor_length
@@ -399,21 +397,37 @@ func (sd *SegmentationDescriptor) decode(b []byte) error {
 		sd.SegmentNum = r.Uint32(8)
 		sd.SegmentsExpected = r.Uint32(8)
 
-		// these fields are new in 2016 so we need a secondary check whether
-		// they were actually included in the binary payload
-		if sd.SegmentationTypeID == SegmentationTypeProviderPOStart || sd.SegmentationTypeID == SegmentationTypeDistributorPOStart {
+		switch sd.SegmentationTypeID {
+		case SegmentationTypeProviderAdStart: // 0x30
+			fallthrough
+		case SegmentationTypeDistributorAdStart: // 0x32
+			fallthrough
+		case SegmentationTypeProviderPOStart: // 0x34
+			fallthrough
+		case SegmentationTypeDistributorPOStart: // 0x36
+			fallthrough
+		case SegmentationTypeProviderOverlayPOStart: // 0x38
+			fallthrough
+		case SegmentationTypeDistributorOverlayPOStart: // 0x3A
+			fallthrough
+		case SegmentationTypeProviderAdBlockStart: // 0x44
+			fallthrough
+		case SegmentationTypeDistributorAdBlockStart: // 0x46
 			if r.LeftBits() == 16 {
 				n := r.Uint32(8)
 				e := r.Uint32(8)
 				sd.SubSegmentNum = &n
 				sd.SubSegmentsExpected = &e
 			}
+		default:
+			// consume this data anyway so parsing can continue without ErrBufferUnderflow
+			if r.LeftBits() == 16 {
+				_ = r.Uint32(8)
+				_ = r.Uint32(8)
+			}
 		}
 	}
 
-	if err != nil {
-		return err
-	}
 	if err := readerError(r); err != nil {
 		return fmt.Errorf("segmentation_descriptor: %w", err)
 	}
